@@ -1,0 +1,32 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.env/
+.venv/
+venv/
+
+# Python packaging
+dist/
+build/
+*.egg-info/
+
+# Data and outputs
+data/processed/
+outputs/
+
+# Logs
+*.log
+outputs/logs/
+
+# Checkpoints and model weights
+*.ckpt
+*.pt
+*.bin
+outputs/checkpoints/
+
+# IDE files
+.vscode/
+.DS_Store
