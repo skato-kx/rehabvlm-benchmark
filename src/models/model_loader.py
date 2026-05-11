@@ -6,7 +6,7 @@ import torch
 from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
 
 
-DEFAULT_MODEL = "Qwen/Qwen2-VL-7B-Instruct"
+DEFAULT_MODEL = "Qwen/Qwen2-VL-2B-Instruct"
 
 
 def load_base_model(

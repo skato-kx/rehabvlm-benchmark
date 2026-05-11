@@ -1,19 +1,21 @@
-# Training configuration scaffold for Qwen-VL fine-tuning
 model:
-  base_model: "qwen-vl"
+  base_model: "Qwen/Qwen2-VL-2B-Instruct"
   peft: false
   output_dir: "outputs/checkpoints"
 
 data:
   annotations_file: "data/annotations/train.jsonl"
+  eval_annotations_file: "data/annotations/test.jsonl"
   raw_video_dir: "data/raw"
   cache_dir: "data/processed"
+  num_frames: 8
 
 training:
-  epochs: 3
-  batch_size: 4
+  device: "cpu"
+  epochs: 1
+  batch_size: 1
   learning_rate: 2e-5
   weight_decay: 0.01
-  logging_steps: 10
-  save_steps: 100
-  evaluation_strategy: "steps"
+  max_length: 512
+  max_new_tokens: 128
+  logging_steps: 1

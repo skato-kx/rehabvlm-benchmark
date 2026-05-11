@@ -5,12 +5,14 @@ from typing import Any, Dict, List
 import cv2
 import numpy as np
 import torch
+from PIL import Image
 from qwen_vl_utils import process_vision_info
 
 IGNORE_INDEX = -100
 
 
-def _sample_frames(video_path: str, n_frames: int) -> List[np.ndarray]:
+def _sample_frames(video_path: str, n_frames: int) -> List[Image.Image]:
+    """Sample n frames evenly across the video and return as PIL Images."""
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise RuntimeError(f"Cannot open video: {video_path}")
@@ -21,7 +23,7 @@ def _sample_frames(video_path: str, n_frames: int) -> List[np.ndarray]:
         cap.set(cv2.CAP_PROP_POS_FRAMES, int(idx))
         ret, frame = cap.read()
         if ret:
-            frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            frames.append(Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)))
     cap.release()
     if not frames:
         raise RuntimeError(f"No frames extracted from: {video_path}")
@@ -67,7 +69,7 @@ class RehabCollator:
                 {
                     "role": "user",
                     "content": [
-                        {"type": "video", "video": frames, "fps": 1.0},
+                        {"type": "video", "video": frames},
                         {"type": "text", "text": prompt_str},
                     ],
                 },
@@ -93,8 +95,6 @@ class RehabCollator:
             videos=all_video_inputs,
             return_tensors="pt",
             padding=True,
-            truncation=True,
-            max_length=self.max_length,
         )
 
         # Mask prompt tokens so loss is only computed on the answer/reasoning.
