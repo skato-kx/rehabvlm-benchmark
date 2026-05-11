@@ -7,4 +7,6 @@ transformers>=4.45.0
 accelerate
 datasets
 peft
+torchvision
 qwen-vl-utils
+opencv-python
