@@ -3,6 +3,8 @@
 pyyaml
 numpy
 torch
-transformers
+transformers>=4.45.0
 accelerate
 datasets
+peft
+qwen-vl-utils
