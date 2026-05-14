@@ -1,5 +1,5 @@
 model:
-  base_model: "Qwen/Qwen2-VL-2B-Instruct"
+  base_model: "Qwen/Qwen3-VL-2B-Instruct"
   peft: false
   output_dir: "outputs/checkpoints"
 
@@ -11,7 +11,7 @@ data:
   num_frames: 8
 
 training:
-  device: "cpu"
+  device: "mps"
   epochs: 1
   batch_size: 1
   learning_rate: 2e-5

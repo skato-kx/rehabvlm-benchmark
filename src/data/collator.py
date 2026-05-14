@@ -1,4 +1,4 @@
-"""Batch collator for Qwen2-VL multimodal video + text inputs."""
+"""Batch collator for Qwen3-VL multimodal video + text inputs."""
 
 from typing import Any, Dict, List
 
@@ -6,13 +6,15 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image
-from qwen_vl_utils import process_vision_info
 
 IGNORE_INDEX = -100
 
 
+MAX_FRAME_SIZE = 480  # longest side in pixels
+
+
 def _sample_frames(video_path: str, n_frames: int) -> List[Image.Image]:
-    """Sample n frames evenly across the video and return as PIL Images."""
+    """Sample n frames evenly across the video, resize, and return as PIL Images."""
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise RuntimeError(f"Cannot open video: {video_path}")
@@ -22,8 +24,13 @@ def _sample_frames(video_path: str, n_frames: int) -> List[Image.Image]:
     for idx in indices:
         cap.set(cv2.CAP_PROP_POS_FRAMES, int(idx))
         ret, frame = cap.read()
-        if ret:
-            frames.append(Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)))
+        if not ret:
+            continue
+        h, w = frame.shape[:2]
+        if max(h, w) > MAX_FRAME_SIZE:
+            scale = MAX_FRAME_SIZE / max(h, w)
+            frame = cv2.resize(frame, (int(w * scale), int(h * scale)))
+        frames.append(Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)))
     cap.release()
     if not frames:
         raise RuntimeError(f"No frames extracted from: {video_path}")
@@ -31,17 +38,11 @@ def _sample_frames(video_path: str, n_frames: int) -> List[Image.Image]:
 
 
 class RehabCollator:
-    """Collate dataset items into Qwen2-VL model inputs with label masking."""
+    """Collate dataset items into Qwen3-VL model inputs with label masking."""
 
-    def __init__(
-        self,
-        processor: Any,
-        num_frames: int = 8,
-        max_length: int = 512,
-    ) -> None:
+    def __init__(self, processor: Any, num_frames: int = 8) -> None:
         self.processor = processor
         self.num_frames = num_frames
-        self.max_length = max_length
 
     def _format_prompt(self, question: str, choices: Dict[str, str]) -> str:
         choice_lines = "\n".join(f"{k}. {v}" for k, v in choices.items())
@@ -58,7 +59,8 @@ class RehabCollator:
         return answer
 
     def __call__(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
-        full_texts, prompt_texts, all_video_inputs = [], [], []
+        all_inputs = []
+        all_prompt_lens = []
 
         for item in batch:
             frames = _sample_frames(item["video_path"], self.num_frames)
@@ -77,34 +79,60 @@ class RehabCollator:
             ]
             messages_prompt = messages_full[:1]
 
-            full_texts.append(
-                self.processor.apply_chat_template(
-                    messages_full, tokenize=False, add_generation_prompt=False
-                )
+            inputs = self.processor.apply_chat_template(
+                messages_full,
+                tokenize=True,
+                add_generation_prompt=False,
+                return_dict=True,
+                return_tensors="pt",
             )
-            prompt_texts.append(
-                self.processor.apply_chat_template(
-                    messages_prompt, tokenize=False, add_generation_prompt=True
-                )
+            prompt_inputs = self.processor.apply_chat_template(
+                messages_prompt,
+                tokenize=True,
+                add_generation_prompt=True,
+                return_dict=True,
+                return_tensors="pt",
             )
-            _, video_inputs = process_vision_info(messages_full)
-            all_video_inputs.append(video_inputs)
 
-        inputs = self.processor(
-            text=full_texts,
-            videos=all_video_inputs,
-            return_tensors="pt",
-            padding=True,
-        )
+            all_inputs.append(inputs)
+            all_prompt_lens.append(prompt_inputs["input_ids"].shape[1])
 
-        # Mask prompt tokens so loss is only computed on the answer/reasoning.
-        labels = inputs["input_ids"].clone()
-        for i, prompt_text in enumerate(prompt_texts):
-            prompt_len = self.processor.tokenizer(
-                prompt_text, return_tensors="pt", add_special_tokens=False
-            )["input_ids"].shape[1]
-            labels[i, :prompt_len] = IGNORE_INDEX
-        labels[inputs["attention_mask"] == 0] = IGNORE_INDEX
+        # Pad across batch to max sequence length
+        max_len = max(inp["input_ids"].shape[1] for inp in all_inputs)
+        pad_id = self.processor.tokenizer.pad_token_id
 
-        inputs["labels"] = labels
-        return inputs
+        input_ids_list, attention_mask_list, labels_list, mm_type_ids_list = [], [], [], []
+        pixel_values_list, video_grid_thw_list = [], []
+
+        for inputs, prompt_len in zip(all_inputs, all_prompt_lens):
+            seq_len = inputs["input_ids"].shape[1]
+            pad_len = max_len - seq_len
+
+            ids  = torch.nn.functional.pad(inputs["input_ids"],          (0, pad_len), value=pad_id)
+            mask = torch.nn.functional.pad(inputs["attention_mask"],     (0, pad_len), value=0)
+            mm   = torch.nn.functional.pad(inputs["mm_token_type_ids"],  (0, pad_len), value=0)
+
+            labels = ids.clone()
+            labels[0, :prompt_len] = IGNORE_INDEX
+            labels[0, seq_len:]    = IGNORE_INDEX
+
+            input_ids_list.append(ids)
+            attention_mask_list.append(mask)
+            labels_list.append(labels)
+            mm_type_ids_list.append(mm)
+
+            if "pixel_values_videos" in inputs:
+                pixel_values_list.append(inputs["pixel_values_videos"])
+                video_grid_thw_list.append(inputs["video_grid_thw"])
+
+        batch_out = {
+            "input_ids":         torch.cat(input_ids_list,    dim=0),
+            "attention_mask":    torch.cat(attention_mask_list, dim=0),
+            "mm_token_type_ids": torch.cat(mm_type_ids_list,  dim=0),
+            "labels":            torch.cat(labels_list,        dim=0),
+        }
+        if pixel_values_list:
+            batch_out["pixel_values_videos"] = torch.cat(pixel_values_list,    dim=0)
+            batch_out["video_grid_thw"]      = torch.cat(video_grid_thw_list,  dim=0)
+
+        return batch_out

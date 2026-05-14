@@ -1,24 +1,24 @@
-"""Model loading utilities for Qwen2-VL and PEFT adapters."""
+"""Model loading utilities for Qwen3-VL and PEFT adapters."""
 
 from typing import Any, Dict, Optional, Tuple
 
 import torch
-from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
+from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
 
 
-DEFAULT_MODEL = "Qwen/Qwen2-VL-2B-Instruct"
+DEFAULT_MODEL = "Qwen/Qwen3-VL-2B-Instruct"
 
 
 def load_base_model(
     model_name: str = DEFAULT_MODEL,
     device: str = "cpu",
     torch_dtype: Optional[torch.dtype] = None,
-) -> Qwen2VLForConditionalGeneration:
-    """Load Qwen2-VL base model from HuggingFace."""
+) -> Qwen3VLForConditionalGeneration:
+    """Load Qwen3-VL base model from HuggingFace."""
     if torch_dtype is None:
         torch_dtype = torch.bfloat16 if device != "cpu" else torch.float32
 
-    model = Qwen2VLForConditionalGeneration.from_pretrained(
+    model = Qwen3VLForConditionalGeneration.from_pretrained(
         model_name,
         torch_dtype=torch_dtype,
         device_map=device if device != "cpu" else None,
