@@ -29,7 +29,7 @@ class RehabTrainer:
         self.config = config or {}
 
         self.device = self.config.get("device", "cpu")
-        lr = self.config.get("learning_rate", 2e-5)
+        lr = float(self.config.get("learning_rate", 2e-5))
         self.optimizer = torch.optim.AdamW(
             filter(lambda p: p.requires_grad, model.parameters()),
             lr=lr,

@@ -44,7 +44,6 @@ def main(config_path: str) -> None:
     collator = RehabCollator(
         processor=processor,
         num_frames=cfg["data"].get("num_frames", 8),
-        max_length=cfg["training"].get("max_length", 512),
     )
 
     trainer = RehabTrainer(
